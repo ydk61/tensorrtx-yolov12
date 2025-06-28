@@ -92,7 +92,7 @@ cp [PATH-TO-ultralytics]/yolov2n.wts .
 
 
 
-### SegmentSegment
+### Segment
 ```shell
 cp [PATH-TO-ultralytics]/yolov2n-seg.wts .
 # Build and serialize TensorRT engine
@@ -102,26 +102,3 @@ cp [PATH-TO-ultralytics]/yolov2n-seg.wts .
 # results saved in build directory
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## More Information
-See the readme in [home page.](https://github.com/wang-xinyu/tensorrtx)
