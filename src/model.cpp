@@ -682,3 +682,100 @@ nvinfer1::IHostMemory* buildEngineYolov12Seg(nvinfer1::IBuilder* builder, nvinfe
     }
     return serialized_model;
 }
+
+
+nvinfer1::IHostMemory* buildEngineYolov12Cls(nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
+    nvinfer1::DataType dt, const std::string& wts_path, float& gd, float& gw,
+    std::string& type, int max_channels) {
+
+    std::map<std::string, nvinfer1::Weights> weightMap = loadWeights(wts_path);
+    nvinfer1::INetworkDefinition* network = builder->createNetworkV2(
+            1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
+
+    nvinfer1::ITensor* data = network->addInput(kInputTensorName , dt, nvinfer1::Dims4{kBatchSize, 3, kClsInputH, kClsInputW});
+    assert(data);
+
+    nvinfer1::ILayer* conv0 = Conv(network, weightMap, *data, get_width(64, gw, max_channels), "model.0", 3, 2);
+    nvinfer1::ILayer* conv1 =
+            Conv(network, weightMap, *conv0->getOutput(0), get_width(128, gw, max_channels), "model.1", 3, 2, 1, 2);
+
+    bool c3k2 = false;
+    if (type == "m" || type == "l" || type == "x") {
+        c3k2 = true;
+    }
+    float mlp_ratio = 2.0;
+    bool residual = true;
+    if (type == "l" || type == "x") {
+        //mlp_ratio = 1.5;  // if use the official's pretrained model,you are supposed to use 1.5
+        mlp_ratio = 1; // your ownself 's model
+        // residual = true;
+    }
+
+    nvinfer1::ILayer* conv2 =
+            C3K2(network, weightMap, *conv1->getOutput(0), get_width(256, gw, max_channels), 
+                  get_depth(2, gd), "model.2", c3k2, 0.25);
+    nvinfer1::ILayer* conv3 = Conv(network, weightMap, *conv2->getOutput(0), get_width(256, gw, max_channels), "model.3", 3, 2, 1, 4);
+    nvinfer1::ILayer* conv4 =
+            C3K2(network, weightMap, *conv3->getOutput(0), get_width(512, gw, max_channels), get_depth(2, gd), "model.4", c3k2, 0.25);
+    nvinfer1::ILayer* conv5 =
+        Conv(network, weightMap, *conv4->getOutput(0), get_width(512, gw, max_channels), "model.5", 3, 2);
+    nvinfer1::ILayer* conv6 =
+            A2C2f(network, weightMap, *conv5->getOutput(0), get_width(512, gw, max_channels), 
+                get_depth(4, gd), "model.6", true, 1, residual, mlp_ratio);
+    nvinfer1::ILayer* conv7 = Conv(network, weightMap, *conv6->getOutput(0), get_width(1024, gw, max_channels), "model.7", 3, 2);
+    nvinfer1::ILayer* conv8 =
+            A2C2f(network, weightMap, *conv7->getOutput(0), get_width(1024, gw, max_channels),
+                  get_depth(4, gd), "model.8", true, 1, residual, mlp_ratio);
+
+
+    nvinfer1::ILayer *conv_class = Conv(network, weightMap, *conv8->getOutput(0), 1280, "model.9.conv");
+    nvinfer1::Dims dim = conv_class->getOutput(0)->getDimensions();
+    assert(dim.nbDims == 4);
+    nvinfer1::IPoolingLayer* pool2 = network->addPoolingNd(*conv_class->getOutput(0), nvinfer1::PoolingType::kAVERAGE, 
+        nvinfer1::DimsHW{dim.d[2], dim.d[3]});
+
+    nvinfer1::IShuffleLayer* shuffle_0 = network->addShuffle(*pool2->getOutput(0));
+    shuffle_0->setReshapeDimensions(nvinfer1::Dims2{kBatchSize, 1280});
+    auto linear_weight = weightMap["model.9.linear.weight"];
+    auto constant_weight = network->addConstant(nvinfer1::Dims2{kClsNumClass, 1280}, linear_weight);
+    auto constant_bias =
+            network->addConstant(nvinfer1::Dims2{kBatchSize, kClsNumClass}, weightMap["model.9.linear.bias"]);
+    auto linear_matrix_multipy =
+            network->addMatrixMultiply(*shuffle_0->getOutput(0), nvinfer1::MatrixOperation::kNONE,
+                                       *constant_weight->getOutput(0), nvinfer1::MatrixOperation::kTRANSPOSE);
+    auto yolo = network->addElementWise(*linear_matrix_multipy->getOutput(0), *constant_bias->getOutput(0),
+                                        nvinfer1::ElementWiseOperation::kSUM);
+    assert(yolo);
+
+    yolo->getOutput(0)->setName(kOutputTensorName);
+    network->markOutput(*yolo->getOutput(0));
+
+    // Set the maximum batch size and workspace size
+    config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, 16 * (1 << 20));
+
+    // Configuration according to the precision mode being used
+#if defined(USE_FP16)
+    config->setFlag(nvinfer1::BuilderFlag::kFP16);
+#elif defined(USE_INT8)
+    std::cout << "Your platform supports int8: " << (builder->platformHasFastInt8() ? "true" : "false") << std::endl;
+    assert(builder->platformHasFastInt8());
+    config->setFlag(nvinfer1::BuilderFlag::kINT8);
+    auto* calibrator = new Int8EntropyCalibrator2(kBatchSize, kClsInputW, kClsInputH, kInputQuantizationFolder,
+                                                  "int8calib.table", kInputTensorName);
+    config->setInt8Calibrator(calibrator);
+#endif
+
+    // Begin building the engine; this may take a while
+    std::cout << "Building engine, please wait for a while..." << std::endl;
+    nvinfer1::IHostMemory* serialized_model = builder->buildSerializedNetwork(*network, *config);
+    std::cout << "Build engine successfully!" << std::endl;
+
+    // Cleanup the network definition and allocated weights
+    delete network;
+
+    for (auto& mem : weightMap) {
+        free((void*)(mem.second.values));
+    }
+    return serialized_model;
+}
+
