@@ -4,6 +4,7 @@ Yolov12 model supports TensorRT-8.
 
 Detection training code [link](https://github.com/sunsmarterjie/yolov12/releases/tag/turbo)
 Segment training code[link](https://github.com/sunsmarterjie/yolov12/releases/tag/seg)
+Classify training code[link](https://github.com/sunsmarterjie/yolov12/releases/tag/cls)
 
 ## Environment
 
@@ -17,6 +18,7 @@ Segment training code[link](https://github.com/sunsmarterjie/yolov12/releases/ta
 
 * [x] YOLOv12-det support FP32/FP16 and C++ API
 * [x] YOLOv12-seg support FP32/FP16 and C++ API
+* [x] YOLOv12-cls support FP32/FP16 and C++ API
 
 
 ## Config
@@ -90,15 +92,22 @@ cp [PATH-TO-ultralytics]/yolov2n.wts .
 # results saved in build directory
 ```
 
-
-
 ### Segment
 ```shell
 cp [PATH-TO-ultralytics]/yolov2n-seg.wts .
 # Build and serialize TensorRT engine
 ./yolov12-seg -s yolov12n-seg.wts yolov12n-seg.engine [n/s/m/l/x]
 # Run inference
-./yolov12-det -d yolov12n-seg.engine ../images [c/g]
+./yolov12-seg -d yolov12n-seg.engine ../images [c/g]
 # results saved in build directory
 ```
 
+### Classify
+```shell
+cp [PATH-TO-ultralytics]/yolov2n-cls.wts .
+# Build and serialize TensorRT engine
+./yolov12-cls -s yolov12n-cls.wts yolov12n-cls.engine [n/s/m/l/x]
+# Run inference
+./yolov12-cls -d yolov12n-cls.engine ../images [c/g]
+# results saved in build directory
+```
