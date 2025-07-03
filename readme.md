@@ -82,6 +82,33 @@ cmake ..
 make
 ```
 
+## Build and Run (Classify)
+
+1. generate .wts from pytorch with .pt, or download .wts from model zoo
+
+```shell
+# Download ultralytics
+wget https://github.com/sunsmarterjie/yolov12/releases/tag/cls -O ultralytics-8.3.63.zip
+# Unzip ultralytics
+unzip ultralytics-8.3.63.zip
+cd ultralytics-8.3.63
+# Training your ownself models
+to download other models, replace 'yolo12n-cls.pt' with 'yolo12s-cls.pt', 'yolo12m-cls.pt', 'yolo12l-cls.pt' or 'yolo12x-cls.pt'
+# Generate .wts
+cp [PATH-TO-TENSORRTX]/yolov12/gen_wts.py .
+python gen_wts.py -w yolo12n-cls.pt -t cls -o yolo12n-cls.wts 
+# A file 'yolo12n-cls.wts' will be generated.
+```
+
+2. build tensorrtx/yolov12 and run
+```shell
+cd [PATH-TO-TENSORRTX]/yolov12
+mkdir build
+cd build
+cmake ..
+make
+```
+
 ### Detection
 ```shell
 cp [PATH-TO-ultralytics]/yolov2n.wts .
